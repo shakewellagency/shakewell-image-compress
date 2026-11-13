@@ -10,5 +10,12 @@
     "SCRIPT_DEBUG": true
   },
   "port": 8930,
-  "testsPort": 8931
+  "testsPort": 8931,
+  "env": {
+    "tests": {
+      "mappings": {
+        "wp-content/plugins/shakewell-media-offload": "https://github.com/shakewellagency/shakewell-media-offload/releases/download/v0.1.1/shakewell-media-offload.zip"
+      }
+    }
+  }
 }

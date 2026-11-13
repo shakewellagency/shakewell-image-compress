@@ -19,7 +19,9 @@ final class Cli {
 	 *
 	 * A JPEG is heavy if it looks saved at near-maximum quality (bytes per pixel over the threshold) or weighs at least --min-kb. The heaviest come first. On a dry run nothing is read except file sizes and nothing is written, and the projected size is a model, not an encode.
 	 *
-	 * With --apply, each image gets a "-scaled" copy: orientation applied to the pixels, long edge shrunk to --max-edge, target quality, EXIF/IPTC/XMP dropped. The copy becomes the main file and the upload stays on disk, untouched, as the original image. Sub-sizes are made again, the result is checked, and any failure puts the attachment back as it was. `revert` undoes a finished one. CMYK images and other colour profiles than sRGB are left alone, as are files not on local disk.
+	 * With --apply, each image gets a "-scaled" copy: orientation applied to the pixels, long edge shrunk to --max-edge, target quality, EXIF/IPTC/XMP dropped. The copy becomes the main file and the upload stays on disk, untouched, as the original image. Sub-sizes are made again, the result is checked, and any failure puts the attachment back as it was. `revert` undoes a finished one. CMYK images and other colour profiles than sRGB are left alone, as are files that are neither on local disk nor served from storage.
+	 *
+	 * Media kept only in storage by Shakewell Media Offload is handled too: the original is downloaded from its address to a temporary file, the new files are written locally for Shakewell Media Offload to upload when the metadata is updated, the result is checked by asking storage for both objects, and the local copies are removed again. Nothing is deleted from storage: the original object and the previous sub-sizes stay, and `revert` points the attachment back at them.
 	 *
 	 * Safe to stop and run again: attachments already re-encoded, or marked to be left alone, are skipped. Try --limit=1 before a large run.
 	 *

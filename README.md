@@ -24,7 +24,7 @@ A JPEG is a candidate if it looks saved at near-maximum quality or weighs at lea
 - The upload is never deleted or overwritten. The only file ever removed is a "-scaled" copy the run has just created, when a check fails.
 - The attachment's previous file and metadata are recorded first, every change is checked (new file served, upload intact), and any failure puts the attachment back. `revert` undoes a finished one and also recovers an interrupted one.
 - A re-encode that saves less than `--min-savings` (20%) is not kept.
-- CMYK images, colour profiles other than sRGB, files not on local disk, and names already taken are left alone.
+- CMYK images, colour profiles other than sRGB, files that are neither on local disk nor served from storage, and names already taken (on disk or in storage) are left alone.
 - Safe to stop and run again: finished or marked attachments are skipped.
 
 ## Settings
@@ -48,7 +48,16 @@ define( 'SHAKEWELL_IMAGE_COMPRESS_QUALITY', 80 );
 add_filter( 'shakewell_image_compress_bytes_per_pixel', fn() => 0.5 );
 ```
 
-The bulk command only handles files on local disk. Media kept only in a bucket is skipped.
+### Media kept only in a bucket
+
+With [Shakewell Media Offload](https://github.com/shakewellagency/shakewell-media-offload) serving the library, `reencode` also handles attachments whose files are not on local disk. For each one it:
+
+1. downloads the original from its address to a temporary file (and checks it against the size in the metadata);
+2. re-encodes it and writes the new "-scaled" file and sub-sizes to local disk, where Shakewell Media Offload uploads them when the metadata is updated;
+3. checks by request that storage serves the new file and still serves the original at its recorded size, then removes the local copies;
+4. rolls everything back if any step fails.
+
+Nothing is deleted from the bucket: the original object and the previous sub-sizes stay there, and the record kept in post meta lists where they live (`previous_urls`). `revert` points the attachment back at the original and checks that it still answers. The new objects are left in the bucket, unused, after a revert or a failed run. The objects must be readable at the addresses the site serves them from (a delivery domain, or a public bucket), because the download and the checks are plain requests. Other offload plugins that serve media by address and upload on a metadata update should work the same way, but only Shakewell Media Offload is tested.
 
 After a `revert` the "-scaled" file and its sub-sizes stay on disk, unused. Deleting a re-encoded attachment also removes its previous sub-sizes. The record of each re-encode lives in post meta (`_shakewell_image_compress_*`) and is kept on uninstall, so `revert` still works after a reinstall.
 
