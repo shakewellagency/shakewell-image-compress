@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          tools: composer:v2
+      - run: composer install --no-interaction --no-progress
+      - name: Coding standards
+        run: composer lint
+      - name: Dependency audit
+        run: composer audit --no-dev
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Lowest supported, and latest. Keep in step with "Requires at least" and "Tested up to".
+        include:
+          - wp: '6.5'
+            php: '8.1'
+          - wp: 'latest'
+            php: '8.3'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          tools: composer:v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: composer install --no-interaction --no-progress
+      - run: npm ci
+      - name: Pick WordPress and PHP versions
+        run: |
+          core=null
+          if [ "${{ matrix.wp }}" != "latest" ]; then core="\"WordPress/WordPress#${{ matrix.wp }}\""; fi
+          echo "{\"core\": $core, \"phpVersion\": \"${{ matrix.php }}\"}" > .wp-env.override.json
+      - run: npm run env:start
+      - name: PHPUnit
+        run: npm test
+      - name: Plugin Check
+        if: matrix.wp == 'latest'
+        run: npm run plugin-check

@@ -1,0 +1,13 @@
+.github
+tests
+.gitattributes
+.gitignore
+.distignore
+.wp-env.json
+composer.json
+composer.lock
+package.json
+package-lock.json
+phpcs.xml.dist
+phpunit.xml.dist
+README.md

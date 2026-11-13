@@ -1,0 +1,14 @@
+{
+  "name": "shakewell-plugin-template",
+  "private": true,
+  "license": "GPL-2.0-or-later",
+  "scripts": {
+    "env:start": "wp-env start",
+    "env:stop": "wp-env stop",
+    "test": "wp-env run tests-cli --env-cwd=wp-content/plugins/$npm_package_name vendor/bin/phpunit",
+    "plugin-check": "wp-env run cli wp plugin check $npm_package_name --exclude-directories=vendor,node_modules,tests,.github --exclude-files=.gitattributes,.gitignore,.distignore,.wp-env.json,.phpunit.result.cache,phpcs.xml.dist,phpunit.xml.dist"
+  },
+  "devDependencies": {
+    "@wordpress/env": "12.1.0"
+  }
+}
