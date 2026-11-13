@@ -1,6 +1,6 @@
 {
-    "name": "shakewellagency/shakewell-plugin-template",
-    "description": "Starting point for Shakewell WordPress plugins.",
+    "name": "shakewellagency/shakewell-image-compress",
+    "description": "Re-encodes JPEGs saved at near-maximum quality on upload, and in bulk from WP-CLI, keeping every original.",
     "type": "wordpress-plugin",
     "license": "GPL-2.0-or-later",
     "authors": [
