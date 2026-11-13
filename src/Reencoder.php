@@ -178,7 +178,10 @@ final class Reencoder {
 		}
 
 		$before = (int) filesize( $file );
-		$size   = wp_getimagesize( $file );
+		if ( $before < 1 ) {
+			return new WP_Error( 'empty', 'the file is empty on disk' );
+		}
+		$size = wp_getimagesize( $file );
 		if ( ! $size || 'image/jpeg' !== ( $size['mime'] ?? '' ) ) {
 			return new WP_Error( 'type', 'the file is not a JPEG' );
 		}
@@ -203,8 +206,11 @@ final class Reencoder {
 				return $result;
 			}
 			$after = (int) filesize( $out );
-			$pct   = round( 100 * ( 1 - $after / $before ), 1 );
-			if ( $after < 1 || $pct < $opts['min_savings'] ) {
+			if ( $after < 1 ) {
+				return new WP_Error( 'encode', 'the editor wrote an empty file' );
+			}
+			$pct = round( 100 * ( 1 - $after / $before ), 1 );
+			if ( $pct < $opts['min_savings'] ) {
 				update_post_meta( $id, self::SKIP_META, 'low-savings' );
 				return array(
 					'status' => 'kept',
@@ -272,12 +278,7 @@ final class Reencoder {
 	 * @return array|WP_Error
 	 */
 	private static function swap( int $id, array $meta, string $attached, string $file, string $scaled, string $out, array $saved, int $before, int $after, float $pct ) {
-		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_copy -- plain local copy into the uploads folder.
-		if ( ! copy( $out, $scaled ) ) {
-			return new WP_Error( 'write', 'could not write ' . wp_basename( $scaled ) );
-		}
-
-		// Recorded first and marked pending, so a run killed part-way leaves something `revert` can restore.
+		// Recorded before anything is written and marked pending, so a run killed part-way leaves something `revert` can restore.
 		$backup = array(
 			'state'         => 'pending',
 			'attached_file' => $attached,
@@ -289,6 +290,12 @@ final class Reencoder {
 		);
 		update_post_meta( $id, self::BACKUP_META, $backup );
 
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_copy -- plain local copy into the uploads folder.
+		if ( ! copy( $out, $scaled ) ) {
+			delete_post_meta( $id, self::BACKUP_META );
+			return new WP_Error( 'write', 'could not write ' . wp_basename( $scaled ) );
+		}
+
 		$new                   = $meta;
 		$new['file']           = _wp_relative_upload_path( $scaled );
 		$new['filesize']       = $after;
@@ -296,6 +303,10 @@ final class Reencoder {
 		$new['width']          = (int) $saved['width'];
 		$new['height']         = (int) $saved['height'];
 		$new['sizes']          = array();
+		if ( isset( $new['image_meta']['orientation'] ) ) {
+			// The pixels are turned already, as core records after maybe_exif_rotate().
+			$new['image_meta']['orientation'] = 1;
+		}
 
 		try {
 			update_attached_file( $id, $scaled );
@@ -380,13 +391,31 @@ final class Reencoder {
 	 * @param string $file Path.
 	 * @param array  $size Result of wp_getimagesize().
 	 */
-	private static function would_change_colour( string $file, array $size ): ?string {
+	public static function would_change_colour( string $file, array $size ): ?string {
 		if ( 4 === (int) ( $size['channels'] ?? 3 ) ) {
 			return 'cmyk';
 		}
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- the first 256 KB of a local file.
 		$head = (string) file_get_contents( $file, false, null, 0, 262144 );
 		return ( false !== strpos( $head, 'ICC_PROFILE' ) && false === strpos( $head, 'sRGB' ) ) ? 'colour-profile' : null;
+	}
+
+	/**
+	 * Deletes the previous sub-sizes of a re-encoded attachment along with it. Core only knows the current ones.
+	 *
+	 * @param int $id Attachment ID.
+	 */
+	public static function delete_previous_sizes( $id ): void {
+		$backup = get_post_meta( (int) $id, self::BACKUP_META, true );
+		if ( ! is_array( $backup ) || empty( $backup['attached_file'] ) || empty( $backup['metadata']['sizes'] ) ) {
+			return;
+		}
+		$dir = dirname( path_join( wp_get_upload_dir()['basedir'], $backup['attached_file'] ) );
+		foreach ( $backup['metadata']['sizes'] as $size ) {
+			if ( ! empty( $size['file'] ) ) {
+				wp_delete_file( path_join( $dir, wp_basename( $size['file'] ) ) );
+			}
+		}
 	}
 
 	/**

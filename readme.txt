@@ -50,6 +50,10 @@ None. The plugin makes no remote requests.
 
 No. The lighter copy is written beside it as "-scaled", and the upload stays as the attachment's original image. The only file the plugin ever removes is a "-scaled" copy it has just created itself, when a check fails.
 
+= What is left behind? =
+
+After a `revert`, the "-scaled" file and its sub-sizes stay on disk, unused, and can be removed by hand. Deleting a re-encoded attachment also removes its previous sub-sizes. The plugin keeps a record of each re-encode in post meta (`_shakewell_image_compress_backup`, `_shakewell_image_compress_skip`, `_shakewell_image_compress_orphan`). Uninstalling does not remove it, so a `revert` stays possible if the plugin is reinstalled.
+
 = Does it work with media stored in a bucket or on a CDN? =
 
 Not yet. The bulk command only handles files on local disk and skips the rest.

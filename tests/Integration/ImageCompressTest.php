@@ -26,7 +26,8 @@ final class ImageCompressTest extends WP_UnitTestCase {
 	 * @param int    $h     Height.
 	 */
 	private function jpeg( string $name, bool $noisy = true, int $w = 640, int $h = 416 ): string {
-		$path = get_temp_dir() . $name;
+		// Unique per run: the uploads folder outlives a test run, and a repeated name would be renamed.
+		$path = get_temp_dir() . uniqid( '', true ) . '-' . $name;
 		$im   = imagecreatetruecolor( $w, $h );
 		if ( $noisy ) {
 			mt_srand( 7 ); // phpcs:ignore WordPress.WP.AlternativeFunctions.rand_seeding_mt_srand -- repeatable fixture.
@@ -114,11 +115,20 @@ final class ImageCompressTest extends WP_UnitTestCase {
 		$this->assertSame( 2560, Plugin::threshold( 2560, wp_getimagesize( $heavy ), $heavy, 0 ) );
 	}
 
+	public function test_threshold_is_left_alone_for_a_heavy_jpeg_with_a_colour_profile_other_than_srgb(): void {
+		$file = $this->jpeg( 'profile.jpg' );
+		$data = (string) file_get_contents( $file ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- fixture.
+		$icc  = "ICC_PROFILE\0\1\1" . str_repeat( 'x', 20 );
+		file_put_contents( $file, substr( $data, 0, 2 ) . "\xFF\xE2" . pack( 'n', strlen( $icc ) + 2 ) . $icc . substr( $data, 2 ) ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- fixture.
+
+		$this->assertSame( 2560, Plugin::threshold( 2560, wp_getimagesize( $file ), $file, 0 ) );
+	}
+
 	public function test_a_heavy_upload_is_scaled_by_core_and_keeps_the_upload_as_the_original(): void {
 		$id   = self::factory()->attachment->create_upload_object( $this->jpeg( 'upload.jpg' ) );
 		$meta = wp_get_attachment_metadata( $id );
 
-		$this->assertSame( 'upload.jpg', $meta['original_image'] );
+		$this->assertStringEndsWith( 'upload.jpg', $meta['original_image'] );
 		$this->assertStringContainsString( '-scaled', $meta['file'] );
 		$this->assertFileExists( wp_get_original_image_path( $id ) );
 	}
@@ -203,8 +213,8 @@ final class ImageCompressTest extends WP_UnitTestCase {
 		$this->assertIsArray( $result );
 		$this->assertSame( 'done', $result['status'] );
 		$meta = wp_get_attachment_metadata( $id );
-		$this->assertSame( 'bulk.jpg', $meta['original_image'] );
-		$this->assertStringEndsWith( 'bulk-scaled.jpg', get_attached_file( $id ) );
+		$this->assertSame( wp_basename( $original ), $meta['original_image'] );
+		$this->assertStringEndsWith( '-bulk-scaled.jpg', get_attached_file( $id ) );
 		$this->assertFileExists( get_attached_file( $id ) );
 		$this->assertLessThan( $before, filesize( get_attached_file( $id ) ) );
 		$this->assertSame( $hash, md5_file( $original ), 'the upload is untouched' );
@@ -213,6 +223,42 @@ final class ImageCompressTest extends WP_UnitTestCase {
 
 		$again = Reencoder::candidates( array( $id ), $this->opts() );
 		$this->assertSame( array( 'already-reencoded' => 1 ), $again['skipped'] );
+	}
+
+	public function test_reencode_records_that_the_pixels_are_already_turned(): void {
+		$id   = $this->legacy_attachment( $this->jpeg( 'turned.jpg' ) );
+		$meta = get_post_meta( $id, '_wp_attachment_metadata', true );
+		$meta['image_meta']['orientation'] = '6';
+		update_post_meta( $id, '_wp_attachment_metadata', $meta );
+
+		Reencoder::reencode( $id, $this->opts() );
+
+		$this->assertSame( 1, wp_get_attachment_metadata( $id )['image_meta']['orientation'] );
+	}
+
+	public function test_deleting_a_reencoded_attachment_removes_its_previous_sub_sizes_too(): void {
+		$id    = $this->legacy_attachment( $this->jpeg( 'gone-sizes.jpg' ) );
+		$dir   = dirname( get_attached_file( $id ) );
+		$old   = array_column( wp_get_attachment_metadata( $id )['sizes'], 'file' );
+		$this->assertNotEmpty( $old );
+		Reencoder::reencode( $id, $this->opts() );
+		$this->assertFileExists( $dir . '/' . $old[0] );
+
+		wp_delete_attachment( $id, true );
+
+		foreach ( $old as $name ) {
+			$this->assertFileDoesNotExist( $dir . '/' . $name );
+		}
+	}
+
+	public function test_an_empty_file_is_an_error_not_a_crash(): void {
+		$id = $this->legacy_attachment( $this->jpeg( 'empty.jpg' ) );
+		file_put_contents( get_attached_file( $id ), '' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- fixture.
+
+		$result = Reencoder::reencode( $id, $this->opts() );
+
+		$this->assertWPError( $result );
+		$this->assertSame( 'empty', $result->get_error_code() );
 	}
 
 	public function test_reencode_shrinks_the_long_edge_to_the_maximum(): void {
@@ -237,7 +283,7 @@ final class ImageCompressTest extends WP_UnitTestCase {
 		$this->assertSame( $before, get_post_meta( $id, '_wp_attachment_metadata', true ) );
 		$this->assertFileExists( $scaled );
 		$this->assertSame( 'reverted', get_post_meta( $id, Reencoder::SKIP_META, true ) );
-		$this->assertSame( 'back-scaled.jpg', get_post_meta( $id, Reencoder::ORPHAN_META, true ) );
+		$this->assertSame( wp_basename( $scaled ), get_post_meta( $id, Reencoder::ORPHAN_META, true ) );
 
 		$this->assertSame( 'done', Reencoder::reencode( $id, $this->opts() )['status'], 'its own leftover may be written again' );
 	}
@@ -273,13 +319,13 @@ final class ImageCompressTest extends WP_UnitTestCase {
 		$this->assertSame( $path, get_attached_file( $id ) );
 		$this->assertSame( $before, get_post_meta( $id, '_wp_attachment_metadata', true ) );
 		$this->assertSame( $hash, md5_file( $path ) );
-		$this->assertFileDoesNotExist( dirname( $path ) . '/fail-scaled.jpg' );
+		$this->assertFileDoesNotExist( preg_replace( '/\.jpg$/', '-scaled.jpg', $path ) );
 		$this->assertSame( '', get_post_meta( $id, Reencoder::BACKUP_META, true ) );
 	}
 
 	public function test_a_file_already_at_the_scaled_name_is_never_overwritten(): void {
 		$id     = $this->legacy_attachment( $this->jpeg( 'clash.jpg' ) );
-		$scaled = dirname( get_attached_file( $id ) ) . '/clash-scaled.jpg';
+		$scaled = preg_replace( '/\.jpg$/', '-scaled.jpg', get_attached_file( $id ) );
 		file_put_contents( $scaled, 'someone else' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- fixture.
 
 		$result = Reencoder::reencode( $id, $this->opts() );

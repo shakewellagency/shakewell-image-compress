@@ -50,6 +50,8 @@ add_filter( 'shakewell_image_compress_bytes_per_pixel', fn() => 0.5 );
 
 The bulk command only handles files on local disk. Media kept only in a bucket is skipped.
 
+After a `revert` the "-scaled" file and its sub-sizes stay on disk, unused. Deleting a re-encoded attachment also removes its previous sub-sizes. The record of each re-encode lives in post meta (`_shakewell_image_compress_*`) and is kept on uninstall, so `revert` still works after a reinstall.
+
 ## Work on it
 
 ```sh

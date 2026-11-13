@@ -25,6 +25,7 @@ final class Plugin {
 	 */
 	public static function boot(): void {
 		add_filter( 'big_image_size_threshold', array( self::class, 'threshold' ), 10, 4 );
+		add_action( 'delete_attachment', array( Reencoder::class, 'delete_previous_sizes' ) );
 		add_filter( 'wp_editor_set_quality', array( self::class, 'quality' ), 10, 2 );
 		add_filter( 'wp_image_editors', array( self::class, 'editors' ) );
 		add_filter( 'wp_client_side_media_processing_enabled', array( self::class, 'client_side_media' ) );
@@ -69,7 +70,12 @@ final class Plugin {
 
 		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- a missing file simply is not heavy.
 		$bytes = (int) @filesize( (string) $file );
-		return Reencoder::is_heavy( $bytes, $width, $height ) ? $long_edge - 2 : $threshold;
+		if ( ! Reencoder::is_heavy( $bytes, $width, $height ) ) {
+			return $threshold;
+		}
+
+		// Re-encoding drops the colour profile, so CMYK and non-sRGB images keep core's normal behaviour.
+		return null === Reencoder::would_change_colour( (string) $file, (array) $imagesize ) ? $long_edge - 2 : $threshold;
 	}
 
 	/**
