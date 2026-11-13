@@ -4,7 +4,7 @@
  *
  * Runs inside wp-env's tests container, which sets WP_TESTS_DIR (npm test).
  *
- * @package Shakewell\PluginTemplate
+ * @package Shakewell\ImageCompress
  */
 
 $tests_dir = getenv( 'WP_TESTS_DIR' );

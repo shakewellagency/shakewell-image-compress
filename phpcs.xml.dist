@@ -10,7 +10,7 @@
 	<arg name="extensions" value="php"/>
 	<arg value="sp"/>
 
-	<config name="minimum_wp_version" value="6.5"/>
+	<config name="minimum_wp_version" value="6.8"/>
 	<config name="testVersion" value="8.1-"/>
 
 	<rule ref="WordPress"/>
@@ -25,15 +25,15 @@
 	<rule ref="WordPress.WP.I18n">
 		<properties>
 			<property name="text_domain" type="array">
-				<element value="shakewell-plugin-template"/>
+				<element value="shakewell-image-compress"/>
 			</property>
 		</properties>
 	</rule>
 	<rule ref="WordPress.NamingConventions.PrefixAllGlobals">
 		<properties>
 			<property name="prefixes" type="array">
-				<element value="shakewell_plugin_template"/>
-				<element value="Shakewell\PluginTemplate"/>
+				<element value="shakewell_image_compress"/>
+				<element value="Shakewell\ImageCompress"/>
 			</property>
 		</properties>
 	</rule>

@@ -34,7 +34,7 @@ jobs:
       matrix:
         # Lowest supported, and latest. Keep in step with "Requires at least" and "Tested up to".
         include:
-          - wp: '6.5'
+          - wp: '6.8'
             php: '8.1'
           - wp: 'latest'
             php: '8.3'
