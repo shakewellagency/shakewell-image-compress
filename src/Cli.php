@@ -17,9 +17,11 @@ final class Cli {
 	/**
 	 * Re-encodes heavy JPEG attachments. Dry run unless --apply.
 	 *
-	 * A JPEG is heavy if it looks saved at near-maximum quality (bytes per pixel over the threshold) or weighs at least --min-kb. The heaviest come first. On a dry run nothing is read except file sizes and nothing is written, and the projected size is a model, not an encode.
+	 * A JPEG is heavy if it looks saved at near-maximum quality (bytes per pixel over the threshold) or weighs at least --min-kb. The heaviest come first. On a dry run nothing is written and nothing is read except file sizes (and, with --stat or --ids, the size of media kept only in storage, by a request to it), and the projected size is a model, not an encode.
 	 *
-	 * With --apply, each image gets a "-scaled" copy: orientation applied to the pixels, long edge shrunk to --max-edge, target quality, EXIF/IPTC/XMP dropped. The copy becomes the main file and the upload stays on disk, untouched, as the original image. Sub-sizes are made again, the result is checked, and any failure puts the attachment back as it was. `revert` undoes a finished one. CMYK images and other colour profiles than sRGB are left alone, as are files not on local disk.
+	 * With --apply, each image gets a "-scaled" copy: orientation applied to the pixels, long edge shrunk to --max-edge, target quality, EXIF/IPTC/XMP dropped. The copy becomes the main file and the upload stays on disk, untouched, as the original image. Sub-sizes are made again, the result is checked, and any failure puts the attachment back as it was. `revert` undoes a finished one. CMYK images and other colour profiles than sRGB are left alone, as are files that are neither on local disk nor served from storage.
+	 *
+	 * Media kept only in storage by Shakewell Media Offload is handled too: the original is downloaded from its address to a temporary file, the new files are written locally for Shakewell Media Offload to upload when the metadata is updated, the result is checked by asking storage for both objects, and the local copies are removed again. Nothing is deleted from storage: the original object and the previous sub-sizes stay, and `revert` points the attachment back at them.
 	 *
 	 * Safe to stop and run again: attachments already re-encoded, or marked to be left alone, are skipped. Try --limit=1 before a large run.
 	 *
@@ -39,6 +41,9 @@ final class Cli {
 	 *
 	 * [--limit=<n>]
 	 * : Take only the heaviest n. Default: all.
+	 *
+	 * [--stat]
+	 * : For media kept only in storage whose metadata records no file size, ask storage for it (one request each, so slow on a large library). Attachments named in --ids are always asked.
 	 *
 	 * [--ids=<ids>]
 	 * : Comma-separated attachment IDs instead of the whole library. Tried even if an earlier run marked them to be left alone.
@@ -62,6 +67,7 @@ final class Cli {
 			'max_edge'    => isset( $assoc['max-edge'] ) ? max( 256, (int) $assoc['max-edge'] ) : max( 256, (int) Settings::get( 'max_edge' ) ),
 			'min_savings' => isset( $assoc['min-savings'] ) ? (float) $assoc['min-savings'] : (float) Settings::get( 'min_savings' ),
 			'limit'       => isset( $assoc['limit'] ) ? max( 1, (int) $assoc['limit'] ) : 0,
+			'stat'        => ! empty( $assoc['stat'] ),
 		);
 		if ( $opts['min_savings'] < 0 || $opts['min_savings'] >= 100 ) {
 			\WP_CLI::error( '--min-savings must be a percentage from 0 to 99.' );

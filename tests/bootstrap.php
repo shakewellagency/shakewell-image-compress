@@ -20,6 +20,11 @@ tests_add_filter(
 	'muplugins_loaded',
 	static function () {
 		require dirname( __DIR__ ) . '/' . basename( dirname( __DIR__ ) ) . '.php';
+		// Shakewell Media Offload, mapped in by .wp-env.json (tests only): its code is loaded, its hooks are not registered until a test switches it on.
+		$offload = WP_PLUGIN_DIR . '/shakewell-media-offload/shakewell-media-offload.php';
+		if ( is_file( $offload ) ) {
+			require $offload;
+		}
 	}
 );
 

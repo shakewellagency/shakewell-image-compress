@@ -4,7 +4,7 @@ Tags: jpeg, images, compression, optimization, wp-cli
 Requires at least: 6.8
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.1.0
+Stable tag: 0.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -16,7 +16,7 @@ Some JPEGs are uploaded at quality 99 or 100: a 640 by 416 tile can weigh 300 to
 
 **On upload.** WordPress already scales uploads that are too big: it saves a "-scaled" copy at the editor's quality, serves that as the full size and keeps the upload as the original image. This plugin sends a JPEG that looks saved at near-maximum quality (more than 0.6 bytes per pixel) down that same path. Nothing new is invented, and the upload stays on disk.
 
-**In bulk.** `wp shakewell-image-compress reencode` lists the heaviest JPEGs already in the media library (dry run by default) and, with `--apply`, gives each the same treatment: orientation applied to the pixels, long edge shrunk to 2560 pixels, quality 82, a "-scaled" copy as the main file, sub-sizes made again, the upload kept untouched as the original. The attachment's previous file and metadata are recorded first, every change is checked, any failure puts the attachment back, and `wp shakewell-image-compress revert <id>` undoes a finished one. Images in CMYK or with a colour profile other than sRGB, and files not on local disk, are left alone.
+**In bulk.** `wp shakewell-image-compress reencode` lists the heaviest JPEGs already in the media library (dry run by default) and, with `--apply`, gives each the same treatment: orientation applied to the pixels, long edge shrunk to 2560 pixels, quality 82, a "-scaled" copy as the main file, sub-sizes made again, the upload kept untouched as the original. The attachment's previous file and metadata are recorded first, every change is checked, any failure puts the attachment back, and `wp shakewell-image-compress revert <id>` undoes a finished one. Images in CMYK or with a colour profile other than sRGB are left alone. Media kept only in a bucket by Shakewell Media Offload is handled too: the original is downloaded to a temporary file, the new files are uploaded by Shakewell Media Offload when the metadata is updated, storage is asked for the new files and the original before the change is kept, and nothing is deleted from the bucket.
 
 It also switches off WordPress 7.1's client-side media processing, which would otherwise resize uploads in the browser and skip the step above.
 
@@ -52,17 +52,20 @@ No. The lighter copy is written beside it as "-scaled", and the upload stays as 
 
 = What is left behind? =
 
-After a `revert`, the "-scaled" file and its sub-sizes stay on disk, unused, and can be removed by hand. Deleting a re-encoded attachment also removes its previous sub-sizes. The plugin keeps a record of each re-encode in post meta (`_shakewell_image_compress_backup`, `_shakewell_image_compress_skip`, `_shakewell_image_compress_orphan`). Uninstalling does not remove it, so a `revert` stays possible if the plugin is reinstalled.
+After a `revert`, the "-scaled" file and its sub-sizes stay on disk, unused, and can be removed by hand. Deleting a re-encoded attachment also removes its previous sub-sizes from local disk; in a bucket, Shakewell Media Offload removes every object it recorded for the attachment. The plugin keeps a record of each re-encode in post meta (`_shakewell_image_compress_backup`, `_shakewell_image_compress_skip`, `_shakewell_image_compress_orphan`). Uninstalling does not remove it, so a `revert` stays possible if the plugin is reinstalled.
 
 = Does it work with media stored in a bucket or on a CDN? =
 
-Not yet. The bulk command only handles files on local disk and skips the rest.
+Yes, with Shakewell Media Offload. The bulk command downloads an offloaded original from the address the site serves it from, so the bucket or delivery domain must be readable at that address. The previous objects stay in the bucket, and after a revert or a failed run the new objects are left there, unused. Other offload plugins are untested.
 
 = Where do I report a security problem? =
 
 Please do not open a public issue. Follow SECURITY.md in the plugin's repository.
 
 == Changelog ==
+
+= 0.2.0 =
+* The bulk command handles media kept only in a bucket by Shakewell Media Offload: the original is downloaded, the new files are uploaded, the result is checked in storage, and nothing is deleted from the bucket. `revert` works for these too.
 
 = 0.1.0 =
 * First release.

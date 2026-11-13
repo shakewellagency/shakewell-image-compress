@@ -3,7 +3,7 @@
  * Plugin Name:       Shakewell Image Compress
  * Plugin URI:        https://github.com/shakewellagency/shakewell-image-compress
  * Description:       Re-encodes JPEGs saved at near-maximum quality on upload, keeping the upload as the original, and re-encodes the heaviest existing JPEGs in bulk from WP-CLI.
- * Version:           0.1.0
+ * Version:           0.2.0
  * Requires at least: 6.8
  * Requires PHP:      8.1
  * Author:            Shakewell
@@ -19,7 +19,7 @@ namespace Shakewell\ImageCompress;
 
 defined( 'ABSPATH' ) || exit;
 
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 const FILE    = __FILE__;
 
 foreach ( array( 'Settings', 'Reencoder', 'Plugin' ) as $shakewell_image_compress_class ) {
