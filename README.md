@@ -54,12 +54,12 @@ With [Shakewell Media Offload](https://github.com/shakewellagency/shakewell-medi
 
 1. downloads the original from its address to a temporary file (and checks it against the size in the metadata);
 2. re-encodes it and writes the new "-scaled" file and sub-sizes to local disk, where Shakewell Media Offload uploads them when the metadata is updated;
-3. checks by request that storage serves the new file and still serves the original at its recorded size, then removes the local copies;
+3. checks by request that storage serves the new file, every new sub-size and the original at their recorded sizes, then removes the local copies;
 4. rolls everything back if any step fails.
 
 Nothing is deleted from the bucket: the original object and the previous sub-sizes stay there, and the record kept in post meta lists where they live (`previous_urls`). `revert` points the attachment back at the original and checks that it still answers. The new objects are left in the bucket, unused, after a revert or a failed run. The objects must be readable at the addresses the site serves them from (a delivery domain, or a public bucket), because the download and the checks are plain requests. Other offload plugins that serve media by address and upload on a metadata update should work the same way, but only Shakewell Media Offload is tested.
 
-After a `revert` the "-scaled" file and its sub-sizes stay on disk, unused. Deleting a re-encoded attachment also removes its previous sub-sizes. The record of each re-encode lives in post meta (`_shakewell_image_compress_*`) and is kept on uninstall, so `revert` still works after a reinstall.
+After a `revert` the "-scaled" file and its sub-sizes stay on disk, unused. Deleting a re-encoded attachment also removes its previous sub-sizes from local disk. In a bucket, Shakewell Media Offload removes every object it recorded for the attachment, previous sub-sizes included; another offload plugin may not. The record of each re-encode lives in post meta (`_shakewell_image_compress_*`) and is kept on uninstall, so `revert` still works after a reinstall.
 
 ## Work on it
 

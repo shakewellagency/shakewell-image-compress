@@ -99,7 +99,7 @@ final class Reencoder {
 	 * Finds the attachments a run would re-encode. Read-only.
 	 *
 	 * @param int[]|null $ids   Attachment IDs, or null for every JPEG in the library.
-	 * @param array      $opts  min_bytes, max_edge, limit.
+	 * @param array      $opts  min_bytes, max_edge, limit, and optionally stat (ask storage for sizes the metadata lacks).
 	 * @return array{rows:array[],skipped:array<string,int>} Candidates, heaviest first, and skip counts by reason.
 	 */
 	public static function candidates( ?array $ids, array $opts ): array {
@@ -115,7 +115,7 @@ final class Reencoder {
 				$reason = self::skip_reason( $id, $meta, $explicit );
 				$bytes  = 0;
 				if ( null === $reason ) {
-					$bytes = self::known_bytes( $id, $meta );
+					$bytes = self::known_bytes( $id, $meta, $explicit || ! empty( $opts['stat'] ) );
 					if ( $bytes < 1 ) {
 						$reason = 'unknown-size';
 					} elseif ( $bytes < $opts['min_bytes'] && ! self::is_heavy( $bytes, (int) $meta['width'], (int) $meta['height'] ) ) {
@@ -317,7 +317,7 @@ final class Reencoder {
 			'bytes_after'   => $after,
 			'time'          => time(),
 			'offloaded'     => $offloaded,
-			// Where the previous objects live. Nothing here is deleted by this plugin, and an offload plugin deletes them only with the attachment.
+			// Where the previous objects live. This plugin never deletes them. Whether deleting the attachment later removes them is up to the offload plugin: Shakewell Media Offload removes every object it recorded for the attachment.
 			'previous_urls' => $offloaded ? self::urls_of( $id, $meta ) : array(),
 		);
 		update_post_meta( $id, self::BACKUP_META, $backup );
@@ -351,7 +351,7 @@ final class Reencoder {
 			} else {
 				// The offload plugin uploads the new files on this update.
 				wp_update_attachment_metadata( $id, $made );
-				$problem = self::verify( $id, wp_basename( $scaled ), $file, $scaled, $before, $after, $offloaded );
+				$problem = self::verify( $id, wp_basename( $scaled ), $file, $scaled, $before, $after, $offloaded, (array) ( $made['sizes'] ?? array() ) );
 			}
 		} catch ( \Throwable $e ) {
 			$problem = get_class( $e ) . ': ' . $e->getMessage();
@@ -487,7 +487,8 @@ final class Reencoder {
 	 * @param string $url Attachment URL.
 	 */
 	private static function is_remote( string $url ): bool {
-		return '' !== $url && 0 !== strpos( $url, wp_get_upload_dir()['baseurl'] );
+		// Compared without the scheme: an https address and an http base URL are still the same folder.
+		return '' !== $url && 0 !== strpos( set_url_scheme( $url, 'https' ), set_url_scheme( wp_get_upload_dir()['baseurl'], 'https' ) );
 	}
 
 	/**
@@ -584,8 +585,9 @@ final class Reencoder {
 	 *
 	 * @param int   $id   Attachment ID.
 	 * @param array $meta Attachment metadata.
+	 * @param bool  $stat Ask storage for the size when neither disk nor the metadata has it.
 	 */
-	private static function known_bytes( int $id, array $meta ): int {
+	private static function known_bytes( int $id, array $meta, bool $stat ): int {
 		$file = (string) get_attached_file( $id );
 		clearstatcache();
 		if ( file_exists( $file ) ) {
@@ -594,7 +596,8 @@ final class Reencoder {
 		if ( ! empty( $meta['filesize'] ) ) {
 			return (int) $meta['filesize'];
 		}
-		$url = self::remote_url( $id );
+		// One request to storage per attachment, so only when asked for.
+		$url = $stat ? self::remote_url( $id ) : '';
 		return '' === $url ? 0 : self::head( $url )['bytes'];
 	}
 
@@ -640,9 +643,10 @@ final class Reencoder {
 	 * @param int    $before      Upload size.
 	 * @param int    $after       New file size.
 	 * @param bool   $offloaded   The upload was fetched from storage, so the new file must reach it.
+	 * @param array  $sizes       The new metadata's sizes, each of which must be served too.
 	 * @return string|null What is wrong, or null.
 	 */
-	private static function verify( int $id, string $scaled_name, string $original, string $scaled, int $before, int $after, bool $offloaded ): ?string {
+	private static function verify( int $id, string $scaled_name, string $original, string $scaled, int $before, int $after, bool $offloaded, array $sizes ): ?string {
 		clearstatcache();
 		$meta = get_post_meta( $id, '_wp_attachment_metadata', true );
 		$url  = (string) wp_get_attachment_url( $id );
@@ -660,6 +664,19 @@ final class Reencoder {
 			$answer = self::head( $url );
 			if ( 200 !== $answer['code'] || $answer['bytes'] !== $after ) {
 				return sprintf( 'the new file answers %d with %d bytes (expected %d)', $answer['code'], $answer['bytes'], $after );
+			}
+		}
+		if ( $remote ) {
+			// Local copies of the sub-sizes go after this check, so every one must be in storage now.
+			$base = substr( $url, 0, -strlen( wp_basename( $url ) ) );
+			foreach ( $sizes as $size ) {
+				if ( empty( $size['file'] ) ) {
+					continue;
+				}
+				$answer = self::head( $base . rawurlencode( wp_basename( $size['file'] ) ) );
+				if ( 200 !== $answer['code'] || ( ! empty( $size['filesize'] ) && $answer['bytes'] !== (int) $size['filesize'] ) ) {
+					return sprintf( 'the sub-size %s answers %d with %d bytes', $size['file'], $answer['code'], $answer['bytes'] );
+				}
 			}
 		}
 		if ( ! is_array( $meta ) || ( $meta['original_image'] ?? '' ) !== wp_basename( $original ) ) {

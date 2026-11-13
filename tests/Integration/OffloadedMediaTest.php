@@ -24,9 +24,9 @@ final class OffloadedMediaTest extends WP_UnitTestCase {
 	private $objects = array();
 
 	/**
-	 * Refuse uploads of "-scaled" files.
+	 * Refuse uploads of "-scaled" files, or of keys containing this string.
 	 *
-	 * @var bool
+	 * @var bool|string
 	 */
 	private $refuse_scaled = false;
 
@@ -90,7 +90,7 @@ final class OffloadedMediaTest extends WP_UnitTestCase {
 		};
 
 		if ( 'PUT' === $method ) {
-			if ( $this->refuse_scaled && false !== strpos( $key, '-scaled' ) ) {
+			if ( $this->refuse_scaled && false !== strpos( $key, is_string( $this->refuse_scaled ) ? $this->refuse_scaled : '-scaled' ) ) {
 				return $reply( 500 );
 			}
 			$this->objects[ $key ] = (string) $args['body'];
@@ -199,6 +199,39 @@ final class OffloadedMediaTest extends WP_UnitTestCase {
 		$this->assertSame( 'done', $record['state'] );
 		$this->assertTrue( $record['offloaded'] );
 		$this->assertContains( $old_url, $record['previous_urls'] );
+	}
+
+	public function test_a_missing_sub_size_object_rolls_the_change_back_before_local_copies_go(): void {
+		$id     = $this->bucket_only_attachment( 'partial.jpg' );
+		$before = get_post_meta( $id, '_wp_attachment_metadata', true );
+		$this->refuse_scaled = '-scaled-150x150';
+
+		$result = Reencoder::reencode( $id, $this->opts() );
+
+		$this->assertWPError( $result );
+		$this->assertStringContainsString( 'sub-size', $result->get_error_message() );
+		$this->assertSame( $before, get_post_meta( $id, '_wp_attachment_metadata', true ) );
+	}
+
+	public function test_deleting_the_attachment_removes_its_previous_objects_with_this_offload_plugin(): void {
+		$id  = $this->bucket_only_attachment( 'deleted.jpg' );
+		$key = $this->key_of( $id );
+		Reencoder::reencode( $id, $this->opts() );
+		$this->assertArrayHasKey( dirname( $key ) . '/' . array_column( get_post_meta( $id, Reencoder::BACKUP_META, true )['metadata']['sizes'], 'file' )[0], $this->objects );
+
+		wp_delete_attachment( $id, true );
+
+		$this->assertSame( array(), $this->objects );
+	}
+
+	public function test_candidates_ask_storage_for_a_missing_size_only_when_told_to(): void {
+		$id   = $this->bucket_only_attachment( 'nosize.jpg' );
+		$meta = get_post_meta( $id, '_wp_attachment_metadata', true );
+		unset( $meta['filesize'] );
+		update_post_meta( $id, '_wp_attachment_metadata', $meta );
+
+		$this->assertSame( array( 'unknown-size' => 1 ), Reencoder::candidates( null, $this->opts() )['skipped'] );
+		$this->assertSame( array( $id ), array_column( Reencoder::candidates( null, $this->opts( array( 'stat' => true ) ) )['rows'], 'id' ) );
 	}
 
 	public function test_revert_serves_the_original_object_again_and_keeps_the_new_ones(): void {
